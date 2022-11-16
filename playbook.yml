@@ -1,0 +1,102 @@
+---
+ - name: ChRIS Playbook
+   hosts: mfon@159.223.202.17
+   become: yes
+   become_user: root
+   gather_facts: yes
+   vars:
+      default_container_name: docker
+      default_container_image: ubuntu
+      docker_users: 
+       - 'mfon'
+ 
+   tasks:
+   ##Check Ubuntu version
+     - name: Check Ubuntu version
+       debug: msg="{{ ansible_distribution }}"
+     - name: Check Ubuntu Distribution version
+       debug: msg="{{ ansible_distribution_version }}"
+     - name: Check Ubuntu Distribution major version
+       debug: msg="{{ ansible_distribution_major_version }}"
+
+    ## Install packages and dependencies
+     - name: Install aptitude
+       apt:
+        name: aptitude
+        state: latest
+        update_cache: true
+
+     - name: Install required system packages
+       apt:
+        pkg:
+          - apt-transport-https
+          - ca-certificates
+          - curl
+          - software-properties-common
+          - python3-pip
+          - virtualenv
+          - python3-setuptools
+        state: latest
+        update_cache: true
+
+    #Install Docker
+     - name: Add Docker GPG apt Key
+       apt_key:
+          url: https://download.docker.com/linux/ubuntu/gpg
+          state: present
+
+     - name: Add Docker Repository
+       apt_repository:
+          repo: deb https://download.docker.com/linux/ubuntu focal stable
+          state: present
+
+     - name: Update apt and install docker-ce
+       apt:
+          name: docker-ce
+          state: latest
+          update_cache: true
+
+     - name: Install Docker Module for Python
+       pip:
+          name: docker
+
+   ##Install Docker-compose
+     - name: Install docker-compose
+       file:
+         path: ~/.docker/cli-plugins/
+         state: directory
+     - name: curl command
+       shell: ' curl -SL https://github.com/docker/compose/releases/download/v2.3.3/docker-compose-linux-x86_64 -o ~/.docker/cli-plugins/docker-compose '
+    
+     - name: Make Docker-compose executable
+       file:
+         path: ~/.docker/cli-plugins/docker-compose
+         state: file
+         mode: a+x
+
+    ## Add to docker group
+     - name: users | adding docker users
+       user:
+          name: "{{ item }}"
+          append: yes
+          groups: docker
+       become: true
+       with_items: '{{ docker_users }}'
+
+    ## make directory and clone chris backend
+     - name: Create ChRIS directory
+       file:
+         path: /home/mfon/chris
+         state: directory
+
+     - name: Clone ChRIS_backEnd
+       git:
+        repo: https://github.com/FNNDSC/ChRIS_ultron_backend
+        dest: /home/mfon/chris
+        clone: yes
+        update: yes
+
+     - name: Run ChRIS backend
+       shell: chdir=/home/mfon/chris docker swarm leave --force && docker swarm init --advertise-addr 127.0.0.1 &&  \
+              ./unmake.sh && sudo rm -fr CHRIS_REMOTE_FS && rm -fr CHRIS_REMOTE_FS &&        \
+              ./make.sh -U -I -i
